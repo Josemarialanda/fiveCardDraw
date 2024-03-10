@@ -1,0 +1,15 @@
+cradle:
+  multi:
+    # - path: "ignore/"
+    #   config: {cradle: {none: }}
+    - path: "src"
+      config: {cradle: {cabal: {component: "fiveCardDraw:fiveCardDraw-exe"}}}
+    
+    - path: "lib"
+      config: {cradle: {cabal: {component: "lib:fiveCardDraw"}}}
+  
+    - path: "test"
+      config: {cradle: {cabal: {component: "fiveCardDraw:fiveCardDraw-test"}}}
+    
+    - path: "bench"
+      config: {cradle: {cabal: {component: "fiveCardDraw:fiveCardDraw-bench"}}}
