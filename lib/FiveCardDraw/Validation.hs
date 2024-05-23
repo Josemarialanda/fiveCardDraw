@@ -19,12 +19,13 @@ module FiveCardDraw.Validation
 import qualified Data.Map as Map
 
 import FiveCardDraw.Types       (Chips, DrawChoices, GameError(..), GameError(..), Hand, Player(..),
-                                 Seat, GameCtx(..), PlayerStatus(..), PostedAnte(..), Deck(..), 
+                                 Seat, GameCtx(..), PlayerStatus(..), PostedAnte(..), Deck(..),
                                  InHandStatus(..), BettingAction (..))
 import Control.Monad.State      (MonadState(..))
 import Control.Monad.Except     (MonadError(..))
 import Data.Maybe               (isJust)
 import FiveCardDraw.Utils.Utils (freeSeats)
+import Data.Monoid (Last(Last))
 
 type Bundle m = (MonadState GameCtx m, MonadError GameError m)
 
@@ -42,10 +43,10 @@ dealCards = canDealCards
           cond3 = allSatInPlayersHavePostedAnte ctx
           cond4 = hasDesignatedDealer ctx
       case (cond1, cond2, cond3, cond4) of
-        (False, _, _, _) -> throwError DeckIncomplete
-        (_, False, _, _) -> throwError NotEnoughSatInPlayers
-        (_, _, False, _) -> throwError NotAllSatInPlayersHavePostedAnte
-        (_, _, _, False) -> throwError HandHasNoDesignatedDealer
+        (False, _, _, _) -> throwError $ DeckIncomplete "Cannot deal cards, deck has less than 52 cards"
+        (_, False, _, _) -> throwError $ NotEnoughSatInPlayers "Cannot deal cards, less than 2 players sat in hand"
+        (_, _, False, _) -> throwError $ NotAllSatInPlayersHavePostedAnte "Cannot deal cards, not all sat in players have posted ante"
+        (_, _, _, False) -> throwError $ HandHasNoDesignatedDealer "Cannot deal cards, hand has no designated dealer"
         _ -> success
 
 designateDealer :: Bundle m => Seat -> m (Either GameError ())
@@ -58,9 +59,9 @@ designateDealer seat = canDesignateDealer
           cond2 = playerHasPostedAnte seat ctx
           cond3 = not $ hasDesignatedDealer ctx
       case (cond1, cond2, cond3) of
-        (False, _, _) -> throwError PlayerNotSatIn
-        (_, False, _) -> throwError PlayerHasNotPostedAnte
-        (_, _, False) -> throwError HandAlreadyHasDealerDesignated
+        (False, _, _) -> throwError $ PlayerNotSatIn $ "Cannot designate " <> show seat <> " as dealer, player not sat in"
+        (_, False, _) -> throwError $ PlayerHasNotPostedAnte $ "Cannot designate " <> show seat <> " as dealer, player has not posted ante"
+        (_, _, False) -> throwError $ HandAlreadyHasDealerDesignated $ "Cannot designate " <> show seat <> " as dealer, hand already has dealer designated"
         _ -> success
 
 takeSeat :: Bundle m => Player -> m (Either GameError ())
@@ -72,8 +73,8 @@ takeSeat player = canTakeSeat
       let cond1 = not $ playerHasSeat player
           cond2 = freeSeatAvailable ctx
       case (cond1, cond2) of
-        (False, _) -> throwError PlayerAlreadyHasSeat
-        (_, False) -> throwError NoFreeSeatsAvailable
+        (False, _) -> throwError $ PlayerAlreadyHasSeat $ "Cannot take seat, player: " <> show (player'name player) <> " already has a seat: " <> show (player'seat player)
+        (_, False) -> throwError $ NoFreeSeatsAvailable $ "Player: " <> show (player'name player) <> " cannot take seat, no free seats available"
         _ -> success
 
 leaveSeat :: Bundle m => Seat -> m (Either GameError ())
@@ -85,8 +86,8 @@ leaveSeat seat = canLeaveSeat
       let cond1 = seatHasPlayer seat ctx
           cond2 = playerIsSatOut seat ctx
       case (cond1, cond2) of
-        (False, _) -> throwError NoPlayerAtSeat
-        (_, False) -> throwError PlayerNotSatOut
+        (False, _) -> throwError $ NoPlayerAtSeat $ "Cannot leave seat, no player at seat: " <> show seat
+        (_, False) -> throwError $ PlayerNotSatOut $ "Cannot leave seat, player at seat: " <> show seat <> " not sat out"
         _ -> success
 
 postAnte :: Bundle m => Seat -> m (Either GameError ())
@@ -99,9 +100,9 @@ postAnte seat = canPostAnte
           cond2 = not $ playerHasPostedAnte seat ctx
           cond3 = playerHasEnoughChipsForAnte seat ctx
       case (cond1, cond2, cond3) of
-        (False, _, _) -> throwError PlayerNotSatIn
-        (_, False, _) -> throwError PlayerHasPostedAnte
-        (_, _, False) -> throwError InsufficientChips
+        (False, _, _) -> throwError $ PlayerNotSatIn $ "Cannot post ante, player at seat " <> show seat <> " not sat in"
+        (_, False, _) -> throwError $ PlayerHasPostedAnte $ "Cannot post ante, player at seat " <> show seat <> " has already posted ante"
+        (_, _, False) -> throwError $ InsufficientChips $ "Cannot post ante, player at seat " <> show seat <> " has insufficient chips"
         _ -> success
 
 fold :: Bundle m => Seat -> m (Either GameError ())
@@ -110,13 +111,13 @@ fold seat = canFold
     canFold :: Bundle m =>  m (Either GameError ())
     canFold = do
       ctx <- get
-      let cond1 = not $ playerHasLastBettingAction seat ctx
+      let cond1 = not $ inHandPlayerHasLastBettingAction seat ctx
           cond2 = playerIsInHand seat ctx
           cond3 = playerCanAct seat ctx
       case (cond1, cond2, cond3) of
-        (False, _, _) -> throwError PlayerHasLastBettingAction
-        (_, False, _) -> throwError PlayerNotInHand
-        (_, _, False) -> throwError PlayerCannotAct
+        (False, _, _) -> throwError $ PlayerHasLastBettingAction $ "Cannot fold, player at seat " <> show seat <> " has already acted this round"
+        (_, False, _) -> throwError $ PlayerNotInHand $ "Cannot fold, player at seat " <> show seat <> " not in hand"
+        (_, _, False) -> throwError $ PlayerCannotAct  $ "Cannot fold, player at seat " <> show seat <> " cannot act"
         _ -> success
 
 call :: Bundle m => Seat -> m (Either GameError ())
@@ -125,16 +126,25 @@ call seat = canCall
     canCall :: Bundle m =>  m (Either GameError ())
     canCall = do
       ctx <- get
-      let cond1 = not $ playerHasLastBettingAction seat ctx
+      let cond1 = not $ inHandPlayerHasLastBettingAction seat ctx
           cond2 = playerIsInHand seat ctx
           cond3 = playerCanAct seat ctx
-          cond4 = playerHasEnoughChipsForCall seat ctx
-      case (cond1, cond2, cond3, cond4) of
-        (False, _, _, _) -> throwError PlayerHasLastBettingAction
-        (_, False, _, _) -> throwError PlayerNotInHand
-        (_, _, False, _) -> throwError PlayerCannotAct
-        (_, _, _, False) -> throwError InsufficientChips
+          cond4 = betPlaced ctx
+          cond5 = playerHasEnoughChipsForCall seat ctx
+      case (cond1, cond2, cond3, cond4, cond5) of
+        (False, _, _, _, _) -> throwError $ PlayerHasLastBettingAction $ "Cannot call, player at seat " <> show seat <> " has already acted this round"
+        (_, False, _, _, _) -> throwError $ PlayerNotInHand $ "Cannot call, player at seat " <> show seat <> " not in hand"
+        (_, _, False, _, _) -> throwError $ PlayerCannotAct $ "Cannot call, player at seat " <> show seat <> " cannot act"
+        (_, _, _, False, _) -> throwError $ NoBetPlaced $ "Player at seat " <> show seat <> " cannot call, no bet has been placed" 
+        (_, _, _, _, False) -> throwError $ InsufficientChips $ "Cannot call, player at seat " <> show seat <> " has insufficient chips to call"
         _ -> success
+
+--       case (cond1, cond2, cond3, cond4) of
+--         (False, _, _, _) -> throwError $ PlayerHasLastBettingAction $ "Cannot call, player at seat " <> show seat <> " has already acted this round"
+--         (_, False, _, _) -> throwError $ PlayerNotInHand $ "Cannot call, player at seat " <> show seat <> " not in hand"
+--         (_, _, False, _) -> throwError $ PlayerCannotAct $ "Cannot call, player at seat " <> show seat <> " cannot act"
+--         (_, _, _, False) -> throwError $ InsufficientChips $ "Cannot call, player at seat " <> show seat <> " has insufficient chips to call"
+--         _ -> success
 
 raise :: Bundle m => Seat -> Chips -> m (Either GameError ())
 raise seat chips = canRaise
@@ -142,17 +152,19 @@ raise seat chips = canRaise
     canRaise :: Bundle m =>  m (Either GameError ())
     canRaise = do
       ctx <- get
-      let cond1 = not $ playerHasLastBettingAction seat ctx
+      let cond1 = not $ inHandPlayerHasLastBettingAction seat ctx
           cond2 = playerIsInHand seat ctx
           cond3 = playerCanAct seat ctx
-          cond4 = playerHasEnoughChipsForCall seat ctx
-          cond5 = playerHasEnoughChipsForBet seat ctx chips
-      case (cond1, cond2, cond3, cond4, cond5) of
-        (False, _, _, _, _) -> throwError PlayerHasLastBettingAction
-        (_, False, _, _, _) -> throwError PlayerNotInHand
-        (_, _, False, _, _) -> throwError PlayerCannotAct
-        (_, _, _, False, _) -> throwError InsufficientChips
-        (_, _, _, _, False) -> throwError InsufficientChips
+          cond4 = playerHasEnoughChipsForRaise seat ctx
+          cond5 = raiseIsHigherThanCurrentBet seat ctx chips
+          cond6 = betPlaced ctx
+      case (cond1, cond2, cond3, cond4, cond5, cond6) of
+        (False, _, _, _, _, _) -> throwError $ PlayerHasLastBettingAction $ "Cannot raise, player at seat " <> show seat <> " has already acted this round"
+        (_, False, _, _, _, _) -> throwError $ PlayerNotInHand $ "Cannot raise, player at seat " <> show seat <> " not in hand"
+        (_, _, False, _, _, _) -> throwError $ PlayerCannotAct $ "Cannot raise, player at seat " <> show seat <> " cannot act"
+        (_, _, _, False, _, _) -> throwError $ InsufficientChips $ "Cannot raise, player at seat " <> show seat <> " has insufficient chips to raise"
+        (_, _, _, _, False, _) -> throwError $ RaiseNotHigherThanCurrentBet $ "Cannot raise, player at seat " <> show seat <> " has not raised higher than current bet"
+        (_, _, _, _, _, False) -> throwError $ NoBetPlaced $ "Player at seat " <> show seat <> " cannot raise, no bet has been placed"
         _ -> success
 
 bet :: Bundle m => Seat -> Chips -> m (Either GameError ())
@@ -161,17 +173,17 @@ bet seat chips = canBet
     canBet :: Bundle m =>  m (Either GameError ())
     canBet = do
       ctx <- get
-      let cond1 = not $ playerHasLastBettingAction seat ctx
+      let cond1 = not $ inHandPlayerHasLastBettingAction seat ctx
           cond2 = not $ betPlaced ctx
           cond3 = playerIsInHand seat ctx
           cond4 = playerCanAct seat ctx
           cond5 = playerHasEnoughChipsForBet seat ctx chips
       case (cond1, cond2, cond3, cond4, cond5) of
-        (False, _, _, _, _) -> throwError PlayerHasLastBettingAction
-        (_, False, _, _, _) -> throwError BetAlreadyPlaced
-        (_, _, False, _, _) -> throwError PlayerNotInHand
-        (_, _, _, False, _) -> throwError PlayerCannotAct
-        (_, _, _, _, False) -> throwError InsufficientChips
+        (False, _, _, _, _) -> throwError $ PlayerHasLastBettingAction $ "Cannot bet, player at seat " <> show seat <> " has already acted this round"
+        (_, False, _, _, _) -> throwError $ BetPlaced "Cannot bet, another player has already placed a bet"
+        (_, _, False, _, _) -> throwError $ PlayerNotInHand  $ "Cannot bet, player at seat " <> show seat <> " not in hand"
+        (_, _, _, False, _) -> throwError $ PlayerCannotAct $ "Cannot bet, player at seat " <> show seat <> " cannot act"
+        (_, _, _, _, False) -> throwError $ InsufficientChips $ "Cannot bet, player at seat " <> show seat <> " has insufficient chips to bet"
         _ -> success
 
 check :: Bundle m => Seat -> m (Either GameError ())
@@ -180,15 +192,15 @@ check seat = canCheck
     canCheck :: Bundle m =>  m (Either GameError ())
     canCheck = do
       ctx <- get
-      let cond1 = not $ playerHasLastBettingAction seat ctx
+      let cond1 = not $ inHandPlayerHasLastBettingAction seat ctx
           cond2 = playerIsInHand seat ctx
           cond3 = playerCanAct seat ctx
           cond4 = not $ betPlaced ctx
       case (cond1, cond2, cond3, cond4) of
-        (False, _, _, _) -> throwError PlayerHasLastBettingAction
-        (_, False, _, _) -> throwError PlayerNotInHand
-        (_, _, False, _) -> throwError PlayerCannotAct
-        (_, _, _, False) -> throwError BetAlreadyPlaced
+        (False, _, _, _) -> throwError $ PlayerHasLastBettingAction $ "Cannot check, player at seat " <> show seat <> " has already acted this round"
+        (_, False, _, _) -> throwError $ PlayerNotInHand $ "Cannot check, player at seat " <> show seat <> " not in hand"
+        (_, _, False, _) -> throwError $ PlayerCannotAct $ "Cannot check, player at seat " <> show seat <> " cannot act"
+        (_, _, _, False) -> throwError $ BetPlaced "Cannot check, another player has already placed a bet"
         _ -> success
 
 draw :: Bundle m => Seat -> DrawChoices -> m (Either GameError ())
@@ -201,9 +213,9 @@ draw seat drawSelection = canDraw
           cond2 = playerIsInHand seat ctx
           cond3 = playerCanAct seat ctx
       case (cond1, cond2, cond3) of
-        (False, _, _) -> throwError CardsNotDealt
-        (_, False, _) -> throwError PlayerNotInHand
-        (_, _, False) -> throwError PlayerCannotAct
+        (False, _, _) -> throwError $ CardsNotDealt $ "Cannot draw, cards not dealt to player at seat " <> show seat
+        (_, False, _) -> throwError $ PlayerNotInHand $ "Cannot draw, player at seat " <> show seat <> " not in hand"
+        (_, _, False) -> throwError $ PlayerCannotAct $ "Cannot draw, player at seat " <> show seat <> " cannot act"
         _ -> success
 
 
@@ -217,7 +229,7 @@ sitIn seat = canSitIn
     canSitIn = do
       ctx <- get
       if playerIsInHand seat ctx
-        then throwError PlayerInHand
+        then throwError $ PlayerInHand $ "Cannot sit in, player at seat " <> show seat <> " is in hand"
         else success
 
 sitOut :: Bundle m => Seat -> m (Either GameError ())
@@ -227,7 +239,7 @@ sitOut seat = canSitOut
     canSitOut = do
       ctx <- get
       if playerIsInHand seat ctx
-        then throwError PlayerInHand
+        then throwError $ PlayerInHand $ "Cannot sit out, player at seat " <> show seat <> " is in hand"
         else success
 
 endRound :: Bundle m => m (Either GameError ())
@@ -236,15 +248,21 @@ endRound = canEndRound
     canEndRound :: Bundle m =>  m (Either GameError ())
     canEndRound = do
       ctx <- get
-      if allPlayersHaveLastBettingAction ctx
+      if allInHandPlayersHaveLastBettingAction ctx
         then success
-        else throwError NotAllPlayersHaveActed
+        else throwError $ NotAllPlayersHaveActed "Cannot end round, not all players have acted"
 
 occupiedSeats :: GameCtx -> [Seat]
 occupiedSeats GameCtx{..} = Map.keys gameCtx'players
 
 seatedPlayers :: GameCtx -> [Seat]
-seatedPlayers ctx = filter (flip playerIsSatIn ctx) (occupiedSeats ctx)
+seatedPlayers ctx = filter (`playerIsSatIn` ctx) (occupiedSeats ctx)
+
+inHandPlayers :: GameCtx -> [Seat]
+inHandPlayers ctx = filter (`playerIsInHand` ctx) (occupiedSeats ctx)
+
+canActPlayers :: GameCtx -> [Seat]
+canActPlayers ctx = filter (`playerCanAct` ctx) (inHandPlayers ctx)
 
 atLeast2PlayersSatIn :: GameCtx -> Bool
 atLeast2PlayersSatIn ctx = length (seatedPlayers ctx) >= 2
@@ -268,7 +286,7 @@ playerHasPostedAnte seat GameCtx{..} = maybe False hasPostedAnte player
 
 allSatInPlayersHavePostedAnte :: GameCtx -> Bool
 allSatInPlayersHavePostedAnte ctx@GameCtx{..} =
-  all (flip playerHasPostedAnte ctx) (seatedPlayers ctx)
+  all (`playerHasPostedAnte` ctx) (seatedPlayers ctx)
 
 playerIsSatIn :: Seat -> GameCtx -> Bool
 playerIsSatIn seat GameCtx{..} = maybe False playerStatusIsSatIn player
@@ -336,6 +354,18 @@ playerHasEnoughChipsForBet seat GameCtx{..} chips = maybe False playerHasEnoughC
     playerHasEnoughChips :: Player -> Bool
     playerHasEnoughChips Player{..} = player'chips >= chips
 
+playerHasEnoughChipsForRaise :: Seat -> GameCtx -> Bool
+playerHasEnoughChipsForRaise seat GameCtx{..} = maybe False playerHasEnoughChips player
+  where
+    player :: Maybe Player
+    player = Map.lookup seat gameCtx'players
+
+    playerHasEnoughChips :: Player -> Bool
+    playerHasEnoughChips Player{..} = player'chips > gameCtx'bet
+
+raiseIsHigherThanCurrentBet :: Seat -> GameCtx -> Chips -> Bool
+raiseIsHigherThanCurrentBet seat GameCtx{..} chips = chips > gameCtx'bet
+
 betPlaced :: GameCtx -> Bool
 betPlaced GameCtx{..} = gameCtx'bet > 0
 
@@ -352,8 +382,18 @@ playerHasSeat Player{..} = isJust player'seat
 freeSeatAvailable :: GameCtx -> Bool
 freeSeatAvailable = not . null . freeSeats
 
-allPlayersHaveLastBettingAction :: GameCtx -> Bool
-allPlayersHaveLastBettingAction _ = True
+allInHandPlayersHaveLastBettingAction :: GameCtx -> Bool
+allInHandPlayersHaveLastBettingAction ctx@GameCtx{..} =
+  all (`inHandPlayerHasLastBettingAction` ctx) (canActPlayers ctx)
 
-playerHasLastBettingAction :: Seat -> GameCtx -> Bool
-playerHasLastBettingAction _ _ = False
+inHandPlayerHasLastBettingAction :: Seat -> GameCtx -> Bool
+inHandPlayerHasLastBettingAction seat GameCtx{..} = 
+  maybe False playerStatusHasLastBettingAction player
+  where
+    player :: Maybe Player
+    player = Map.lookup seat gameCtx'players
+
+    playerStatusHasLastBettingAction :: Player -> Bool
+    playerStatusHasLastBettingAction Player{..} = case player'status 
+      of InHand (CanAct (Last (Just _))) -> True
+         _ -> False

@@ -137,13 +137,22 @@ data GameCtx = GameCtx
 type Players = Map Seat Player
 
 data Seat =
-    Seat0
-  | Seat1
+    Seat1
   | Seat2
   | Seat3
   | Seat4
   | Seat5
-  deriving (Eq, Read, Ord, Show, Bounded, Enum)
+  | Seat6
+  deriving (Eq, Read, Ord, Bounded, Enum)
+
+instance Show Seat where
+  show :: Seat -> String
+  show Seat1 = "1"
+  show Seat2 = "2"
+  show Seat3 = "3"
+  show Seat4 = "4"
+  show Seat5 = "5"
+  show Seat6 = "6"
 
 data Player = Player
   { player'name :: String
@@ -204,26 +213,28 @@ data GameF next =
   deriving (Functor)
 
 data GameError 
-  = DeckIncomplete
-  | NotEnoughSatInPlayers
-  | HandHasNoDesignatedDealer
-  | HandAlreadyHasDealerDesignated
-  | NotAllSatInPlayersHavePostedAnte
-  | PlayerNotSatIn
-  | PlayerInHand
-  | PlayerNotInHand
-  | PlayerAlreadyHasSeat
-  | NoPlayerAtSeat
-  | PlayerHasPostedAnte
-  | PlayerHasNotPostedAnte
-  | InsufficientChips
-  | PlayerCannotAct
-  | NotAllPlayersHaveActed
-  | BetAlreadyPlaced
-  | CardsNotDealt
-  | NoFreeSeatsAvailable
-  | PlayerNotSatOut
-  | PlayerHasLastBettingAction
+  = DeckIncomplete String
+  | NotEnoughSatInPlayers String
+  | HandHasNoDesignatedDealer String
+  | HandAlreadyHasDealerDesignated String
+  | NotAllSatInPlayersHavePostedAnte String
+  | PlayerNotSatIn String
+  | PlayerInHand String
+  | PlayerNotInHand String
+  | PlayerAlreadyHasSeat String
+  | NoPlayerAtSeat String
+  | PlayerHasPostedAnte String
+  | PlayerHasNotPostedAnte String
+  | InsufficientChips String
+  | RaiseNotHigherThanCurrentBet String
+  | PlayerCannotAct String
+  | NotAllPlayersHaveActed String
+  | BetPlaced String
+  | NoBetPlaced String
+  | CardsNotDealt String
+  | NoFreeSeatsAvailable String
+  | PlayerNotSatOut String
+  | PlayerHasLastBettingAction String
   deriving (Eq, Read, Ord, Show)
 
 makeLensesWith (lensRules & lensField .~ \_ _ name -> [TopName (mkName (nameBase name <> "L"))]) ''Player

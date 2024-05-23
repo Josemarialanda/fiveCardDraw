@@ -111,8 +111,7 @@ call seat next = validate action validator
 
     action :: m b
     action = do
-      currentBet <- gets gameCtx'bet
-      modify (bet' seat currentBet) >> next
+      modify (call' seat) >> next
 
 raise :: forall m b. Bundle m => Seat -> Chips -> m b -> m b
 raise seat chips next = validate action validator
@@ -121,7 +120,7 @@ raise seat chips next = validate action validator
     validator = Validation.raise seat chips
 
     action :: m b
-    action = modify (bet' seat chips) >> next
+    action = modify (raise' seat chips) >> next
 
 bet :: forall m b. Bundle m => Seat -> Chips -> m b -> m b
 bet seat chips next = validate action validator
@@ -238,31 +237,49 @@ postAnte' seat ctx@GameCtx{..} = ctx
       & player'statusL .~ SatIn HasPostedAnte
       & player'betL .~ gameCtx'ante
 
+call' :: Seat -> GameCtx -> GameCtx
+call' seat ctx@GameCtx{..} = ctx
+  & gameCtx'playersL %~ Map.adjust callPlayer seat
+  & gameCtx'betL .~ gameCtx'bet 
+  & gameCtx'potL +~ gameCtx'bet
+  where
+    callPlayer :: Player -> Player
+    callPlayer player@Player{..} = player
+      & player'chipsL -~ gameCtx'bet
+      & player'betL .~ gameCtx'bet
+      & player'committedL +~ gameCtx'bet
+      & player'statusL .~ InHand (isAllIn player'chips gameCtx'bet (CanAct $ pure $ MadeBet HasCalled))
+      
+raise' :: Seat -> Chips -> GameCtx -> GameCtx
+raise' seat bet ctx@GameCtx{..} = ctx
+  & gameCtx'playersL %~ Map.adjust raisePlayer seat
+  & gameCtx'betL .~ bet
+  & gameCtx'potL +~ bet
+  where
+    raisePlayer :: Player -> Player
+    raisePlayer player@Player{..} = player
+      & player'chipsL -~ bet
+      & player'betL .~ bet
+      & player'committedL +~ bet
+      & player'statusL .~ InHand (isAllIn player'chips bet (CanAct $ pure $ MadeBet $ HasRaised bet))
+
 bet' :: Seat -> Chips -> GameCtx -> GameCtx
 bet' seat bet ctx@GameCtx{..} = ctx
   & gameCtx'playersL %~ Map.adjust betPlayer seat
   & gameCtx'betL .~ bet
   & gameCtx'potL +~ bet
   where
-    bettingAction :: BettingAction
-    bettingAction
-      | gameCtx'bet == 0 && bet > 0 = MadeBet $ HasBet bet
-      | bet == gameCtx'bet = MadeBet HasCalled
-      | bet > gameCtx'bet = MadeBet $ HasRaised bet
-      | otherwise = error "Invalid bet: bet is less than current bet"
-
-    isAllIn :: Chips -> InHandStatus -> InHandStatus
-    isAllIn chips status = case compare bet chips of
-      EQ -> AllIn
-      LT -> status
-      GT -> error "Invalid bet: bet is greater than _player's chips"
-
     betPlayer :: Player -> Player
     betPlayer player@Player{..} = player
       & player'chipsL -~ bet
       & player'betL .~ bet
       & player'committedL +~ bet
-      & player'statusL .~ InHand (isAllIn player'chips (CanAct $ pure bettingAction))
+      & player'statusL .~ InHand (isAllIn player'chips bet (CanAct $ pure $ MadeBet $ HasBet bet))
+
+isAllIn :: Chips -> Chips -> InHandStatus -> InHandStatus
+isAllIn playerChips bet status
+  | playerChips == bet = AllIn
+  | otherwise = status
 
 check' :: Seat -> GameCtx -> GameCtx
 check' seat ctx = ctx & gameCtx'playersL %~ Map.adjust checkPlayer seat
@@ -330,8 +347,10 @@ endRound' ctx@GameCtx{..} = case gameCtx'round of
     updatePlayerNextRound player@Player{..} = player
       & player'betL .~ Chips 0
       & player'committedL .~ Chips 0
-      & player'statusL .~ if player'status == InHand Folded || 
-                            player'status == InHand AllIn
+      & player'statusL .~ if player'status == InHand Folded ||
+                            player'status == InHand AllIn ||
+                            player'status == SatIn HasNotPostedAnte ||
+                            player'status == SatOut
                         then player'status
                         else InHand (CanAct mempty)
 

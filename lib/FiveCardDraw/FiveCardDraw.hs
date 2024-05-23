@@ -102,5 +102,5 @@ game = \case
 interpret :: Game a -> Interpreter a
 interpret = iterM game
 
-run :: Int -> Game a -> IO (Either GameError (a, GameCtx))
-run seed = runExceptT . flip runStateT (mkGameFromSeed 10 seed) . runInterpreter . interpret
+run :: Int -> Int -> Game a -> IO (Either GameError (a, GameCtx))
+run seed ante = runExceptT . flip runStateT (mkGameFromSeed ante seed) . runInterpreter . interpret
