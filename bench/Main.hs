@@ -1,4 +1,4 @@
-import Criterion.Main
+import           Criterion.Main
 
 main :: IO ()
 main = defaultMain []

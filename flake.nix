@@ -4,20 +4,27 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   inputs.flake-utils.url = "github:numtide/flake-utils";
 
-  outputs = inputs:
+  outputs =
+    inputs:
     let
       overlay = final: prev: {
         haskell = prev.haskell // {
-          packageOverrides = hfinal: hprev:
-            prev.haskell.packageOverrides hfinal hprev // {
+          packageOverrides =
+            hfinal: hprev:
+            prev.haskell.packageOverrides hfinal hprev
+            // {
               fiveCardDraw = hfinal.callCabal2nix "fiveCardDraw" ./. { };
             };
         };
         fiveCardDraw = final.haskell.lib.compose.justStaticExecutables final.haskellPackages.fiveCardDraw;
       };
-      perSystem = system:
+      perSystem =
+        system:
         let
-          pkgs = import inputs.nixpkgs { inherit system; overlays = [ overlay ]; };
+          pkgs = import inputs.nixpkgs {
+            inherit system;
+            overlays = [ overlay ];
+          };
           hspkgs = pkgs.haskellPackages;
         in
         {
@@ -29,13 +36,18 @@
               hspkgs.cabal-install
               hspkgs.haskell-language-server
               hspkgs.hlint
-              hspkgs.ormolu
               pkgs.bashInteractive
+              hspkgs.ghcid
+              hspkgs.hspec-discover
+              hspkgs.fourmolu
+              pkgs.hpack
+              pkgs.jq
+              pkgs.go-task
+              pkgs.nixfmt-rfc-style
             ];
           };
           defaultPackage = pkgs.fiveCardDraw;
         };
     in
-    { inherit overlay; } // 
-      inputs.flake-utils.lib.eachDefaultSystem perSystem;
+    { inherit overlay; } // inputs.flake-utils.lib.eachDefaultSystem perSystem;
 }

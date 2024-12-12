@@ -1,14 +1,13 @@
 module FiveCardDraw.Types where
 
-import Language.Haskell.TH  (mkName, nameBase)
-import Data.Map             (Map)
-import Data.Monoid          (Last(..))
-import Control.Monad.State  (MonadState)
-import Control.Monad.Except (MonadError)
-import Data.Function        (on)
-import Control.Lens         ((&), (.~), lensField,
-                             lensRules, makeLensesWith,
-                             DefName(..))
+import           Control.Lens         (DefName (..), lensField, lensRules,
+                                       makeLensesWith, (&), (.~))
+import           Control.Monad.Except (MonadError)
+import           Control.Monad.State  (MonadState)
+import           Data.Function        (on)
+import           Data.Map             (Map)
+import           Data.Monoid          (Last (..))
+import           Language.Haskell.TH  (mkName, nameBase)
 
 data Rank
   = Two
@@ -78,13 +77,13 @@ data Hand = Hand
 
 data RankedHand = RankedHand
   { rankedHand'handRank :: HandRank
-  , rankedHand'hand :: Hand
+  , rankedHand'hand     :: Hand
   }
   deriving (Eq, Read, Ord, Show)
 
 data SeatHand = SeatHand
   { playerHand'rankedHand :: RankedHand
-  , playerHand'seat :: Seat
+  , playerHand'seat       :: Seat
   }
   deriving (Eq, Read, Ord, Show)
 
@@ -95,7 +94,7 @@ newtype Chips = Chips { unChips :: Int }
   deriving (Eq, Read, Ord, Show)
 
 data SplitChips = SplitChips
-  { splitChips'chips :: Chips
+  { splitChips'chips   :: Chips
   , splitChips'oddChip :: Chips
   }
   deriving (Eq, Read, Ord, Show)
@@ -123,13 +122,13 @@ instance Num Chips where
   fromInteger = Chips . fromInteger
 
 data GameCtx = GameCtx
-  { gameCtx'deck :: Deck
-  , gameCtx'pot :: Chips
-  , gameCtx'ante :: Chips
-  , gameCtx'round :: Round
-  , gameCtx'bet :: Chips
+  { gameCtx'deck    :: Deck
+  , gameCtx'pot     :: Chips
+  , gameCtx'ante    :: Chips
+  , gameCtx'round   :: Round
+  , gameCtx'bet     :: Chips
   , gameCtx'players :: Players
-  , gameCtx'dealer :: Maybe Seat
+  , gameCtx'dealer  :: Maybe Seat
   , gameCtx'winners :: Maybe Winners
   }
   deriving (Eq, Read, Ord, Show)
@@ -155,18 +154,18 @@ instance Show Seat where
   show Seat6 = "6"
 
 data Player = Player
-  { player'name :: String
-  , player'hand :: Maybe Hand
-  , player'chips :: Chips
-  , player'bet :: Chips
+  { player'name      :: String
+  , player'hand      :: Maybe Hand
+  , player'chips     :: Chips
+  , player'bet       :: Chips
   , player'committed :: Chips
-  , player'status :: PlayerStatus
-  , player'seat :: Maybe Seat
+  , player'status    :: PlayerStatus
+  , player'seat      :: Maybe Seat
   }
   deriving (Eq, Read, Ord, Show)
 
 data PostedAnte = HasPostedAnte | HasNotPostedAnte
-  deriving (Eq, Read, Ord, Show)  
+  deriving (Eq, Read, Ord, Show)
 
 data PlayerStatus
   = SatOut
@@ -186,7 +185,7 @@ data BettingAction = MadeBet HasBet | Checked
 data HasBet = HasCalled | HasBet Chips | HasRaised Chips
   deriving (Eq, Read, Ord, Show)
 
-data Round = PreDrawRound | PostDrawRound
+data Round = SetupRound | PreDrawRound | DrawRound1 | DrawRound2 | ShowdownRound
   deriving (Eq, Read, Ord, Show, Bounded, Enum)
 
 data Winners
@@ -212,29 +211,34 @@ data GameF next =
   | EndRound next
   deriving (Functor)
 
-data GameError 
-  = DeckIncomplete String
-  | NotEnoughSatInPlayers String
-  | HandHasNoDesignatedDealer String
-  | HandAlreadyHasDealerDesignated String
-  | NotAllSatInPlayersHavePostedAnte String
-  | PlayerNotSatIn String
-  | PlayerInHand String
-  | PlayerNotInHand String
-  | PlayerAlreadyHasSeat String
-  | NoPlayerAtSeat String
-  | PlayerHasPostedAnte String
-  | PlayerHasNotPostedAnte String
-  | InsufficientChips String
-  | RaiseNotHigherThanCurrentBet String
-  | PlayerCannotAct String
-  | NotAllPlayersHaveActed String
-  | BetPlaced String
-  | NoBetPlaced String
-  | CardsNotDealt String
-  | NoFreeSeatsAvailable String
-  | PlayerNotSatOut String
-  | PlayerHasLastBettingAction String
+data GameError
+  = DeckIncomplete
+  | NotEnoughSatInPlayers
+  | HandHasNoDesignatedDealer
+  | NotAllSatInPlayersHavePostedAnte
+  | PlayerNotSatIn
+  | PlayerInHand
+  | CanOnlyPerformOperationInSetupRound
+  | PlayerNotInHand
+  | NotInDrawRound
+  | PlayerAlreadyHasSeat
+  | NoPlayerAtSeat
+  | PlayerHasPostedAnte
+  | PlayerHasNotPostedAnte
+  | InsufficientChips
+  | RaiseNotHigherThanCurrentBet
+  | PlayerCannotAct
+  | PlayerCanStillAct
+  | NotAllPlayersHaveActed
+  | BetPlacedWithCheckedPlayers
+  | PlayerHasBetLowerThanRoundBet
+  | BetPlaced
+  | NoBetPlaced
+  | CardsNotDealt
+  | NoFreeSeatsAvailable
+  | PlayerNotSatOut
+  | PlayerHasLastBettingAction
+  | InvalidBetAmount
   deriving (Eq, Read, Ord, Show)
 
 makeLensesWith (lensRules & lensField .~ \_ _ name -> [TopName (mkName (nameBase name <> "L"))]) ''Player

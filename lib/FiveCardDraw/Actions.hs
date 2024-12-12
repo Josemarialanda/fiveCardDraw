@@ -16,30 +16,38 @@ module FiveCardDraw.Actions
   , endRound
   ) where
 
-import qualified FiveCardDraw.Validation as Validation
-import qualified Data.Map.Strict         as Map
+import qualified Data.Map.Strict          as Map
+import qualified FiveCardDraw.Validation  as Validation
 
-import FiveCardDraw.Types
-                                (gameCtx'anteL, gameCtx'betL, gameCtx'dealerL,
-                                 gameCtx'deckL, gameCtx'playersL, gameCtx'potL,
-                                 gameCtx'roundL, gameCtx'winnersL, player'betL, 
-                                 player'chipsL, player'committedL, player'handL,
-                                 player'seatL, player'statusL,
-                                 BettingAction(..), Chips(Chips), Deck, DrawChoices,
-                                 GameCtx(..), GameError, Hand, HasBet(..), InHandStatus(..),
-                                 Player(..), PlayerStatus(..), Players, PostedAnte(..),
-                                 Round(..), Seat, SeatHand(..), SplitChips(..), Winners(..) )
-import FiveCardDraw.Utils.Utils (drawNCards, replaceCardsWithDraw, takeFreeSeatUnsafe, 
-                                 rankPlayerHand, splitChipsAmongWinners, winnersLength, 
-                                 winnerSeats, isWinner, playerNearestToLeftOfDealer, 
-                                 dealHand, dealToPlayers, nextRound)
-import Control.Monad.State       (MonadState(..), gets, modify)
-import Control.Monad.Except      (MonadError(..))
-import Data.List                 (mapAccumR)
-import Data.Bifunctor            (first)
-import FiveCardDraw.Hands        (evaluatePlayerHands)
-import Data.Tuple                (swap)
-import Control.Lens              ((&), (%~), (+~), (-~), (.~), (?~))
+import           Control.Lens             ((%~), (&), (+~), (-~), (.~), (?~))
+import           Control.Monad.Except     (MonadError (..))
+import           Control.Monad.State      (MonadState (..), gets, modify)
+import           Data.Bifunctor           (first)
+import           Data.List                (mapAccumR)
+import           Data.Tuple               (swap)
+import           FiveCardDraw.Hands       (evaluatePlayerHands)
+import           FiveCardDraw.Types       (BettingAction (..), Chips (Chips),
+                                           Deck, DrawChoices, GameCtx (..),
+                                           GameError, Hand, HasBet (..),
+                                           InHandStatus (..), Player (..),
+                                           PlayerStatus (..), Players,
+                                           PostedAnte (..), Round (..), Seat,
+                                           SeatHand (..), SplitChips (..),
+                                           Winners (..), gameCtx'anteL,
+                                           gameCtx'betL, gameCtx'dealerL,
+                                           gameCtx'deckL, gameCtx'playersL,
+                                           gameCtx'potL, gameCtx'roundL,
+                                           gameCtx'winnersL, player'betL,
+                                           player'chipsL, player'committedL,
+                                           player'handL, player'seatL,
+                                           player'statusL)
+import           FiveCardDraw.Utils.Utils (dealHand, dealToPlayers, drawNCards,
+                                           isWinner, nextRound,
+                                           playerNearestToLeftOfDealer,
+                                           rankPlayerHand, replaceCardsWithDraw,
+                                           splitChipsAmongWinners,
+                                           takeFreeSeatUnsafe, winnerSeats,
+                                           winnersLength)
 
 type Bundle m = (MonadState GameCtx m, MonadError GameError m)
 
@@ -209,11 +217,11 @@ takeSeat' player ctx = (gameCtx', freeSeat)
       & player'statusL .~ SatOut
 
     gameCtx' :: GameCtx
-    gameCtx' = ctx 
+    gameCtx' = ctx
       & gameCtx'playersL %~ Map.insert freeSeat seatedPlayer
 
 leaveSeat' :: Seat -> GameCtx -> GameCtx
-leaveSeat' seat ctx = ctx 
+leaveSeat' seat ctx = ctx
   & gameCtx'playersL %~ Map.delete seat
 
 fold' :: Seat -> GameCtx -> GameCtx
@@ -240,7 +248,6 @@ postAnte' seat ctx@GameCtx{..} = ctx
 call' :: Seat -> GameCtx -> GameCtx
 call' seat ctx@GameCtx{..} = ctx
   & gameCtx'playersL %~ Map.adjust callPlayer seat
-  & gameCtx'betL .~ gameCtx'bet 
   & gameCtx'potL +~ gameCtx'bet
   where
     callPlayer :: Player -> Player
@@ -249,7 +256,7 @@ call' seat ctx@GameCtx{..} = ctx
       & player'betL .~ gameCtx'bet
       & player'committedL +~ gameCtx'bet
       & player'statusL .~ InHand (isAllIn player'chips gameCtx'bet (CanAct $ pure $ MadeBet HasCalled))
-      
+
 raise' :: Seat -> Chips -> GameCtx -> GameCtx
 raise' seat bet ctx@GameCtx{..} = ctx
   & gameCtx'playersL %~ Map.adjust raisePlayer seat
@@ -281,20 +288,24 @@ isAllIn playerChips bet status
   | playerChips == bet = AllIn
   | otherwise = status
 
+allButOnePlayerFolded :: GameCtx -> Bool
+allButOnePlayerFolded GameCtx{..} = 
+  length (Map.filter ((== InHand Folded) . player'status) gameCtx'players) == 1
+
 check' :: Seat -> GameCtx -> GameCtx
 check' seat ctx = ctx & gameCtx'playersL %~ Map.adjust checkPlayer seat
   where
     checkPlayer :: Player -> Player
-    checkPlayer player = player 
+    checkPlayer player = player
       & player'statusL .~ InHand (CanAct $ pure Checked)
 
 draw' :: Seat -> DrawChoices -> GameCtx -> GameCtx
-draw' seat drawSelection ctx@GameCtx{..} = ctx 
+draw' seat drawSelection ctx@GameCtx{..} = ctx
   & gameCtx'playersL %~ Map.adjust drawPlayer seat
   & gameCtx'deckL .~ remainingDeck
   where
     drawPlayer :: Player -> Player
-    drawPlayer player = player & 
+    drawPlayer player = player &
       player'handL .~ newHand
 
     playerHand :: Maybe Hand
@@ -318,11 +329,11 @@ sitIn' :: Seat -> GameCtx -> GameCtx
 sitIn' seat ctx = ctx & gameCtx'playersL %~ Map.adjust sitInPlayer seat
   where
     sitInPlayer :: Player -> Player
-    sitInPlayer player = player 
+    sitInPlayer player = player
       & player'statusL .~ SatIn HasNotPostedAnte
 
 sitOut' :: Seat -> GameCtx -> GameCtx
-sitOut' seat ctx = ctx 
+sitOut' seat ctx = ctx
   & gameCtx'playersL %~ Map.adjust sitOutPlayer seat
   where
     sitOutPlayer :: Player -> Player
@@ -333,9 +344,11 @@ sitOut' seat ctx = ctx
       & player'handL .~ Nothing
 
 endRound' :: GameCtx -> GameCtx
-endRound' ctx@GameCtx{..} = case gameCtx'round of
-  PostDrawRound -> payoutWinners
-  _ -> moveToNextRound
+endRound' ctx@GameCtx{..} = case nextRound gameCtx'round of
+  ShowdownRound -> payoutWinners
+  _             -> if allButOnePlayerFolded ctx
+    then payoutWinners
+    else moveToNextRound
   where
     moveToNextRound :: GameCtx
     moveToNextRound = ctx
@@ -347,12 +360,14 @@ endRound' ctx@GameCtx{..} = case gameCtx'round of
     updatePlayerNextRound player@Player{..} = player
       & player'betL .~ Chips 0
       & player'committedL .~ Chips 0
-      & player'statusL .~ if player'status == InHand Folded ||
-                            player'status == InHand AllIn ||
-                            player'status == SatIn HasNotPostedAnte ||
-                            player'status == SatOut
-                        then player'status
-                        else InHand (CanAct mempty)
+      & player'statusL .~ if elem player'status
+          [ InHand Folded
+          , InHand AllIn
+          , SatIn HasNotPostedAnte
+          , SatOut
+          ]
+          then player'status
+          else InHand (CanAct mempty)
 
     payoutWinners :: GameCtx
     payoutWinners = ctx
@@ -369,19 +384,19 @@ endRound' ctx@GameCtx{..} = case gameCtx'round of
       & player'committedL .~ Chips 0
       & player'statusL .~ SatOut
       & player'chipsL .~ if maybe False (isWinner winners) player'seat
-                        then player'chips + 
-                             splitChips'chips splitChips +
-                             if player'seat == playerNearestToLeftOfDealer ctx
-                             then splitChips'oddChip splitChips
-                             else Chips 0
-                        else Chips 0
+          then player'chips +
+               splitChips'chips splitChips +
+               if player'seat == playerNearestToLeftOfDealer ctx
+               then splitChips'oddChip splitChips
+               else Chips 0
+          else Chips 0
 
     splitChips :: SplitChips
     splitChips = splitChipsAmongWinners gameCtx'pot (winnersLength winners)
 
     winners :: Winners
     winners = case evaluatePlayerHands playerShowdownHands of
-      [SeatHand{..}] -> SinglePlayerShowdown playerHand'seat
+      [SeatHand{..}]      -> SinglePlayerShowdown playerHand'seat
       multiPlayerShowdown -> MultiPlayerShowdown multiPlayerShowdown
 
     playerShowdownHands :: [SeatHand]

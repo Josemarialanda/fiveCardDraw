@@ -1,22 +1,21 @@
 module FiveCardDraw.Utils.Utils where
 
-import qualified Data.Map as Map
+import qualified Data.Map           as Map
 
-import FiveCardDraw.Types (player'handL, player'statusL,
-                           Card(Card), Chips(Chips),
-                           Deck(..), DrawChoice(..),
-                           DrawChoices(..), GameCtx(..),
-                           Hand(..), InHandStatus(..),
-                           Player(..), PlayerStatus(..),
-                           Players, PostedAnte(..), Round(..),
-                           Seat, SeatHand(..), SplitChips(..), Winners(..)) 
-import FiveCardDraw.Hands (valueOfHand)
-import System.Random      (Random (randomR), RandomGen, mkStdGen)
-import Data.List          ((\\), mapAccumR)
-import Data.Maybe         (listToMaybe, fromMaybe, fromJust)
-import Data.Bifunctor     (first, Bifunctor (bimap))
-import Data.Function      (on)
-import Control.Lens       ((&), (.~), (?~))
+import           Control.Lens       ((&), (.~), (?~))
+import           Data.Bifunctor     (Bifunctor (bimap), first)
+import           Data.Function      (on)
+import           Data.List          (mapAccumR, (\\))
+import           Data.Maybe         (fromJust, fromMaybe, listToMaybe)
+import           FiveCardDraw.Hands (valueOfHand)
+import           FiveCardDraw.Types (Card (Card), Chips (Chips), Deck (..),
+                                     DrawChoice (..), DrawChoices (..),
+                                     GameCtx (..), Hand (..), InHandStatus (..),
+                                     Player (..), PlayerStatus (..), Players,
+                                     PostedAnte (..), Round (..), Seat,
+                                     SeatHand (..), SplitChips (..),
+                                     Winners (..), player'handL, player'statusL)
+import           System.Random      (Random (randomR), RandomGen, mkStdGen)
 
 fisherYatesStep :: forall g a. RandomGen g => (Map.Map Int a, g) -> (Int, a) -> (Map.Map Int a, g)
 fisherYatesStep (m, gen) (i, x) =
@@ -43,7 +42,7 @@ mkGameFromSeed ante seed = GameCtx
   { gameCtx'deck = mkShuffledDeck seed
   , gameCtx'pot = Chips 0
   , gameCtx'ante = Chips ante
-  , gameCtx'round = PreDrawRound
+  , gameCtx'round = SetupRound
   , gameCtx'bet = Chips 0
   , gameCtx'dealer = Nothing
   , gameCtx'players = mempty
@@ -60,6 +59,13 @@ mkPlayer playerName chipsAmount = Player
   , player'status = SatOut
   , player'seat = Nothing
   }
+
+getPlayerByName :: String -> GameCtx -> Maybe Player
+getPlayerByName playerName GameCtx{..} =
+  case Map.elems $ Map.filter ((== playerName) . player'name) gameCtx'players of
+    []       -> Nothing
+    [player] -> Just player
+    _        -> error "getPlayerByName: more than one player with the same name"
 
 -- | A standard deck of cards.
 initialDeck :: Deck
@@ -82,8 +88,10 @@ freeSeats GameCtx{..} = [minBound..maxBound] \\ takenSeats
     takenSeats = fst <$> Map.toList gameCtx'players
 
 nextRound :: Round -> Round
-nextRound PreDrawRound = PostDrawRound
-nextRound PostDrawRound = PostDrawRound
+nextRound SetupRound   = PreDrawRound
+nextRound PreDrawRound = DrawRound1
+nextRound DrawRound1   = DrawRound2
+nextRound DrawRound2   = ShowdownRound
 
 rankPlayerHand :: Player -> Maybe SeatHand
 rankPlayerHand Player{..} = SeatHand . valueOfHand <$> player'hand <*> player'seat
@@ -100,9 +108,9 @@ dealHand (Deck cs) = (Hand c1 c2 c3 c4 c5, remainingDeck)
 
 dealToPlayers :: Deck -> Players -> (Deck, Players)
 dealToPlayers = mapAccumR $ \deck player -> case player'status player of
-  SatIn HasPostedAnte -> 
+  SatIn HasPostedAnte ->
     let (hand, remainingDeck) = dealHand deck
-    in (remainingDeck, player 
+    in (remainingDeck, player
          & player'handL ?~ hand
          & player'statusL .~ InHand (CanAct mempty))
   _ -> (deck, player)
@@ -118,7 +126,7 @@ replaceCardsWithDraw deck DrawChoices{..} hand = (hand
   where
     drawCard :: DrawChoice -> Deck -> (Maybe Card, Deck)
     drawCard Discard deck = first listToMaybe $ drawNCards 1 deck
-    drawCard Keep deck = (Nothing, deck)
+    drawCard Keep deck    = (Nothing, deck)
     (card1, remainingDeck) = drawCard draw'choice1 deck
     (card2, remainingDeck') = drawCard draw'choice2 remainingDeck
     (card3, remainingDeck'') = drawCard draw'choice3 remainingDeck'

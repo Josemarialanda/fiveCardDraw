@@ -1,0 +1,45 @@
+version: '3'
+
+tasks:
+  lib:build:
+    desc: Build the library
+    sources:
+      - 'lib/**/*.hs'
+      - 'src/**/*.hs'
+      - 'spec/**/*.hs'
+      - '**/*.nix'
+      - 'Taskfile.yml'
+    cmds:
+      - cabal build {{.CLI_ARGS}}
+
+  lib:dev:
+    desc: Typecheck the library in a loop
+    cmds:
+      - ghcid --command "cabal repl"
+
+  lib:repl:
+    desc: Start a cabal REPL
+    cmds:
+      - cabal repl
+
+  lib:lint:
+    desc: Lint the library
+    cmds:
+      - hlint lib src
+
+  lib:format:
+    desc: Format the library
+    cmds:
+      - find . -name '*.hs' | xargs stylish-haskell --inplace
+      - find . -name '*.nix' | xargs nixfmt
+
+  lib:test:
+    desc: Run API tests
+    deps: [lib:build]
+    cmds:
+      - cabal test
+
+  lib:docs:
+    desc: Build Haddock docs
+    cmds:
+      - cabal haddock

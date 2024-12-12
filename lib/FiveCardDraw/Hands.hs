@@ -1,10 +1,10 @@
 module FiveCardDraw.Hands where
 
-import FiveCardDraw.Types (Card(..), Hand(..), HandRank(..), SeatHand(..), 
-                           RankedHand(..), Rank(..))
-import Data.List          (foldl', groupBy, nubBy, sort, sortBy)
-import Data.Ord           (comparing)
-import Data.Function      (on)
+import           Data.Function      (on)
+import           Data.List          (foldl', groupBy, nubBy, sort, sortBy)
+import           Data.Ord           (comparing)
+import           FiveCardDraw.Types (Card (..), Hand (..), HandRank (..),
+                                     Rank (..), RankedHand (..), SeatHand (..))
 
 type RankGroup = Int
 

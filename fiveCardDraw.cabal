@@ -37,7 +37,8 @@ common common-options
                       UndecidableInstances,
                       DeriveDataTypeable,
                       OverloadedRecordDot,
-                      TemplateHaskell
+                      TemplateHaskell,
+                      MultiWayIf
   ghc-options:
 
 executable fiveCardDraw-exe
@@ -79,6 +80,9 @@ test-suite fiveCardDraw-test
     , hspec
     , HUnit
     , tasty
+    , tasty-hunit
+    , containers
+    , random
     , QuickCheck
   ghc-options:    -threaded -rtsopts -with-rtsopts=-N
 

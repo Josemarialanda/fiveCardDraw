@@ -17,18 +17,18 @@ module FiveCardDraw.FiveCardDraw
   , run
   , Game
   ) where
-  
-import qualified FiveCardDraw.Actions as Actions
-import qualified Data.Map             as Map
 
-import FiveCardDraw.Utils.Utils   (mkGameFromSeed)
-import FiveCardDraw.Types         (Chips, DrawChoices, GameError,
-                                   GameF(..), GameCtx, Hand,
-                                   Player, Seat)
-import Control.Monad.Free         (iterM, liftF, Free, MonadFree)
-import Control.Monad.Trans.Except (ExceptT, runExceptT)
-import Control.Monad.Except       (MonadError, ExceptT, runExceptT)
-import Control.Monad.State        (MonadState, StateT(..))
+import qualified Data.Map                   as Map
+import qualified FiveCardDraw.Actions       as Actions
+
+import           Control.Monad.Except       (ExceptT, MonadError, runExceptT)
+import           Control.Monad.Free         (Free, MonadFree, iterM, liftF)
+import           Control.Monad.State        (MonadState, StateT (..))
+import           Control.Monad.Trans.Except (ExceptT, runExceptT)
+import           FiveCardDraw.Types         (Chips, DrawChoices, GameCtx,
+                                             GameError, GameF (..), Hand,
+                                             Player, Seat)
+import           FiveCardDraw.Utils.Utils   (mkGameFromSeed)
 
 type Game = Free GameF
 

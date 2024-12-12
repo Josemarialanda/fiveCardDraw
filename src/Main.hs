@@ -1,24 +1,21 @@
 module Main where
 
-import FiveCardDraw.FiveCardDraw (bet, call, dealCards,
-                                  designateDealer, draw,
-                                  endRound, fold, muckHand,
-                                  postAnte, raise, run, sitIn,
-                                  takeSeat, Game, leaveSeat, check) 
-import FiveCardDraw.Utils.Utils  (mkPlayer)
-import Text.Pretty.Simple        (pPrint)
-import System.Random             (randomIO)
-import FiveCardDraw.Types        (Chips(Chips), DrawChoice(Keep, Discard),
-                                  DrawChoices(..), GameF, Player, GameCtx (..))
+import           FiveCardDraw.FiveCardDraw (Game, bet, call, check, dealCards,
+                                            designateDealer, draw, endRound,
+                                            fold, leaveSeat, muckHand, postAnte,
+                                            raise, run, sitIn, sitOut, takeSeat)
+import           FiveCardDraw.Types        (Chips (Chips, unChips),
+                                            DrawChoice (Discard, Keep),
+                                            DrawChoices (..), GameCtx (..),
+                                            GameF, Player, Seat (Seat1))
+import           FiveCardDraw.Utils.Utils  (mkPlayer)
+import           System.Random             (randomIO)
+import           Text.Pretty.Simple        (pPrint)
 
 
--- TODO: 
--- 1. If player checks and then another player places bet then the first player needs to call, raise or fold
--- 2. If a player raises then the other player needs to call, raise or fold
--- 3. If all players fold except one then the last player wins
-
+-- TODO:
 -- 4. If a player is left without enough chips to call then they are all in and can only call the amount they have left (or they can fold and forfeit the game)
---    When a player goes all-in and cannot match the full amount of a bet, they are still eligible to win the portion of the pot they contributed to up until they went all-in. 
+--    When a player goes all-in and cannot match the full amount of a bet, they are still eligible to win the portion of the pot they contributed to up until they went all-in.
 --    Any additional bets create separate side pots for those who can match them. The main pot is contested among players who are not all-in.
 
 -- 5. If another player raises the bet, other players must call, raise or fold again.
@@ -31,48 +28,61 @@ main = runGame
 
 exampleGame :: Game ()
 exampleGame = do
-  let player1Name = "Player 1"
-      player2Name = "Player 2"
-
-  player1 <- takeSeat $ mkPlayer player1Name 1000
-  player2 <- takeSeat $ mkPlayer player2Name 1000
-
-  -- pre draw round
-
+  -- Setup round
+  player1 <- takeSeat $ mkPlayer "Player 1" 1000
+  player2 <- takeSeat $ mkPlayer "Player 2" 1000
   sitIn player1
-  sitIn player2 
-    
+  sitIn player2
   postAnte player1
   postAnte player2
-    
   designateDealer player1
-  
   dealCards
-  
-  bet player1 (Chips 100)
-  -- raise player2 (Chips 101)
-
-
   endRound
+
+  check player1
+  bet player2 10
+  call player1
+  endRound
+
+--   -- Setup round
+--   player1 <- takeSeat $ mkPlayer "Player 1" 1000
+--   player2 <- takeSeat $ mkPlayer "Player 2" 1000
+--   sitIn player1
+--   sitIn player2
+--   postAnte player1
+--   postAnte player2
+--   designateDealer player1
+--   dealCards
+--   endRound
 -- 
---   -- post draw round
+--   -- pre draw round
+--   bet player1 10
+--   call player2 
+--   endRound
 -- 
---   draw player1 $ DrawChoices Keep Keep Keep Discard Discard
---   draw player2 $ DrawChoices Discard Discard Keep Discard Keep
+--   -- draw round 1
+--   draw player1 $ DrawChoices Discard Discard Discard Discard Keep
+--   draw player2 $ DrawChoices Discard Discard Discard Discard Keep
+--   bet player1 10
+--   call player2
+--   endRound
 -- 
---   raise player1 (Chips 500)
---   fold player2
---   muckHand player2
--- 
---   -- showdown
--- 
+--   -- draw round 2
+--   draw player1 $ DrawChoices Discard Discard Discard Discard Keep
+--   draw player2 $ DrawChoices Discard Discard Discard Discard Keep
+--   bet player1 107
+--   call player2
 --   endRound
 
 runGame :: IO ()
 runGame = do
-  let ante = 0
+  let ante = 10
   randomSeed <- randomIO
   gameResult <- run randomSeed ante exampleGame
   case gameResult of
-    Left err -> error $ show err
-    Right (_,ctx) -> pPrint ctx
+    Left err      -> error $ show err
+    Right (_,GameCtx{..}) -> do
+      pPrint $ "bet: " <> show (unChips gameCtx'bet) <> "\n"
+      pPrint $ "pot: " <> show (unChips gameCtx'pot) <> "\n"
+      putStrLn "Players:"
+      pPrint gameCtx'players
