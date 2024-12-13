@@ -38,18 +38,19 @@ import           FiveCardDraw.Types       (BettingAction (..), Chips (Chips),
                                            gameCtx'winnersL, player'betL,
                                            player'chipsL, player'committedL,
                                            player'handL, player'seatL,
-                                           player'statusL)
-import           FiveCardDraw.Utils.Utils (dealHand, dealToPlayers, drawNCards,
+                                           player'statusL, Bundle)
+import           FiveCardDraw.Utils.Utils (allButOnePlayerFolded, dealHand,
+                                           dealToPlayers, drawNCards, isAllIn,
                                            isWinner, lookupPlayerBySeat,
                                            nextRound, playerIsInHand,
                                            playerNearestToLeftOfDealer,
                                            rankPlayerHand, replaceCardsWithDraw,
                                            splitChipsAmongWinners,
                                            takeFreeSeatUnsafe, winnerSeats,
-                                           winnersLength, isAllIn, allButOnePlayerFolded)
+                                           winnersLength)
 
-type Bundle m = (MonadState GameCtx m, MonadError GameError m)
-
+-- | Validate an action with a validator, and if the validator returns a
+--   'Left' value, throw the error. Otherwise, return the result of the action.
 validate :: Bundle m => m b -> m (Either GameError ()) -> m b
 validate action validator = validator >>= either throwError (const action)
 
@@ -197,9 +198,7 @@ dealCards' ctx@GameCtx{..} = ctx
   & gameCtx'playersL .~ dealtPlayers
   & gameCtx'deckL .~ remainingDeck
   where
-    remainingDeck :: Deck
-    dealtPlayers :: Players
-    (remainingDeck, dealtPlayers) = dealToPlayers gameCtx'deck gameCtx'players
+    (remainingDeck :: Deck, dealtPlayers :: Players) = dealToPlayers gameCtx'deck gameCtx'players
 
 designateDealer' :: Seat -> GameCtx -> GameCtx
 designateDealer' seat = gameCtx'dealerL ?~ seat
@@ -253,7 +252,7 @@ call' seat ctx@GameCtx{..} = ctx
     bet' = min gameCtx'bet (maybe 0 player'chips (lookupPlayerBySeat seat ctx))
 
     betIncrement :: Chips
-    betIncrement = min gameCtx'bet (maybe 0 player'chips (lookupPlayerBySeat seat ctx)) - maybe 0 player'bet (lookupPlayerBySeat seat ctx)
+    betIncrement = bet' - maybe 0 player'bet (lookupPlayerBySeat seat ctx)
 
     callPlayer :: Player -> Player
     callPlayer player = player
@@ -288,7 +287,7 @@ bet' seat bet ctx@GameCtx{..} = ctx
   & gameCtx'potL +~ bet'
   where
     bet' :: Chips
-    bet' = min bet $ maybe 0 player'chips (lookupPlayerBySeat seat ctx)
+    bet' = min bet (maybe 0 player'chips (lookupPlayerBySeat seat ctx))
 
     betPlayer :: Player -> Player
     betPlayer player = player

@@ -3,13 +3,16 @@ module FiveCardDraw.Utils.Utils where
 import qualified Data.Map             as Map
 
 import           Control.Lens         ((%~), (&), (+~), (-~), (.~), (?~))
+import           Control.Monad.Except (MonadError (..))
+import           Control.Monad.State  (modify)
 import           Data.Bifunctor       (Bifunctor (bimap), first)
 import           Data.Function        (on)
 import           Data.List            (mapAccumR, (\\))
 import           Data.Maybe           (fromJust, fromMaybe, isJust, listToMaybe,
                                        mapMaybe)
+import           Data.Monoid          (Last (Last))
 import           FiveCardDraw.Hands   (valueOfHand)
-import           FiveCardDraw.Types   (BettingAction (..), Card (Card),
+import           FiveCardDraw.Types   (BettingAction (..), Bundle, Card (Card),
                                        Chips (Chips), Deck (..),
                                        DrawChoice (..), DrawChoices (..),
                                        GameCtx (..), GameError (..), Hand (..),
@@ -18,11 +21,8 @@ import           FiveCardDraw.Types   (BettingAction (..), Card (Card),
                                        PostedAnte (..), Round (..), Seat,
                                        SeatHand (..), SplitChips (..),
                                        Winners (..), gameCtx'playersL,
-                                       player'handL, player'statusL, Bundle)
+                                       player'handL, player'statusL)
 import           System.Random        (Random (randomR), RandomGen, mkStdGen)
-import           Control.Monad.Except (MonadError (..))
-import           Control.Monad.State  (modify)
-import           Data.Monoid          (Last (Last))
 
 fisherYatesStep :: forall g a. RandomGen g => (Map.Map Int a, g) -> (Int, a) -> (Map.Map Int a, g)
 fisherYatesStep (m, gen) (i, x) =
@@ -44,17 +44,11 @@ shuffle gen l = toElems $ foldl fisherYatesStep (initial (head l) gen) (numerate
     initial :: a -> g -> (Map.Map Int a, g)
     initial x gen = (Map.singleton 0 x, gen)
 
-mkGameFromSeed :: Int -> Int -> FiveCardDraw.Types.GameCtx
-mkGameFromSeed ante seed = FiveCardDraw.Types.GameCtx
-  { gameCtx'deck = mkShuffledDeck seed
-  , gameCtx'pot = FiveCardDraw.Types.Chips 0
-  , gameCtx'ante = FiveCardDraw.Types.Chips ante
-  , gameCtx'round = FiveCardDraw.Types.SetupRound
-  , gameCtx'bet = FiveCardDraw.Types.Chips 0
-  , gameCtx'dealer = Nothing
-  , gameCtx'players = mempty
-  , gameCtx'winners = Nothing
-  }
+
+
+
+
+
 
 mkPlayer :: String -> Int -> FiveCardDraw.Types.Player
 mkPlayer playerName chipsAmount = FiveCardDraw.Types.Player
@@ -67,26 +61,18 @@ mkPlayer playerName chipsAmount = FiveCardDraw.Types.Player
   , player'seat = Nothing
   }
 
-getPlayerByName :: String -> FiveCardDraw.Types.GameCtx -> Maybe FiveCardDraw.Types.Player
-getPlayerByName playerName FiveCardDraw.Types.GameCtx{..} =
-  case Map.elems $ Map.filter ((== playerName) . player'name) gameCtx'players of
-    []       -> Nothing
-    [player] -> Just player
-    _        -> error "getPlayerByName: more than one player with the same name"
+
+
+
 
 lookupPlayerBySeat :: FiveCardDraw.Types.Seat -> FiveCardDraw.Types.GameCtx -> Maybe FiveCardDraw.Types.Player
 lookupPlayerBySeat seat FiveCardDraw.Types.GameCtx{..} = Map.lookup seat gameCtx'players
 
--- | A standard deck of cards.
-initialDeck :: FiveCardDraw.Types.Deck
-initialDeck = FiveCardDraw.Types.Deck $ FiveCardDraw.Types.Card <$> [minBound ..] <*> [minBound ..]
 
-mkShuffledDeck :: Int -> FiveCardDraw.Types.Deck
-mkShuffledDeck seed = shuffledDeck $ mkStdGen seed
 
--- Get a shuffled deck of cards.
-shuffledDeck :: RandomGen g => g -> FiveCardDraw.Types.Deck
-shuffledDeck gen = FiveCardDraw.Types.Deck <$> fst $ shuffle gen (unDeck initialDeck)
+
+
+
 
 takeFreeSeat :: FiveCardDraw.Types.GameCtx -> Maybe FiveCardDraw.Types.Seat
 takeFreeSeat = listToMaybe . freeSeats
@@ -293,9 +279,6 @@ cardsDealt FiveCardDraw.Types.GameCtx{..} =
     playerHasHand :: FiveCardDraw.Types.Player -> Bool
     playerHasHand FiveCardDraw.Types.Player{..} = isJust player'hand
 
-playerHasSeat :: FiveCardDraw.Types.Player -> FiveCardDraw.Types.GameCtx -> Bool
-playerHasSeat FiveCardDraw.Types.Player{player'name} ctx = isJust $ player'seat =<< getPlayerByName player'name ctx
-
 freeSeatAvailable :: FiveCardDraw.Types.GameCtx -> Bool
 freeSeatAvailable = not . null . freeSeats
 
@@ -312,8 +295,8 @@ inHandPlayerHasLastBettingAction seat ctx@FiveCardDraw.Types.GameCtx{..} =
       of FiveCardDraw.Types.InHand (FiveCardDraw.Types.CanAct (Last (Just _))) -> True
          _                               -> False
 
-ifBetRaisedRequiresAction :: Bundle m => FiveCardDraw.Types.Seat -> m b -> FiveCardDraw.Types.GameCtx -> m b
-ifBetRaisedRequiresAction seat action ctx
+tryResetBetAction :: Bundle m => FiveCardDraw.Types.Seat -> m b -> FiveCardDraw.Types.GameCtx -> m b
+tryResetBetAction seat action ctx
   | playerHasChecked ctx seat = modify (setInHandStatusCanAct seat) >> action
   | playerHasBetLowerThanRoundBet ctx = modify (setInHandStatusCanAct seat) >> action
   | otherwise = throwError PlayerHasLastBettingAction
