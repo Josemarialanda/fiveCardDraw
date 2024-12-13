@@ -12,16 +12,6 @@ import           FiveCardDraw.Utils.Utils  (mkPlayer)
 import           System.Random             (randomIO)
 import           Text.Pretty.Simple        (pPrint)
 
-
--- TODO:
--- 4. If a player is left without enough chips to call then they are all in and can only call the amount they have left (or they can fold and forfeit the game)
---    When a player goes all-in and cannot match the full amount of a bet, they are still eligible to win the portion of the pot they contributed to up until they went all-in.
---    Any additional bets create separate side pots for those who can match them. The main pot is contested among players who are not all-in.
-
--- 5. If another player raises the bet, other players must call, raise or fold again.
---   The players must add the difference between their initial bet and the raised bet to the pot.
---   The betting round ends when all players have either called, checked, raised or folded.
-
 main :: IO ()
 main = runGame
 
@@ -29,19 +19,23 @@ main = runGame
 exampleGame :: Game ()
 exampleGame = do
   -- Setup round
-  player1 <- takeSeat $ mkPlayer "Player 1" 1000
-  player2 <- takeSeat $ mkPlayer "Player 2" 1000
+  player1 <- takeSeat $ mkPlayer "Player 1" 100
+  player2 <- takeSeat $ mkPlayer "Player 2" 100
+  player3 <- takeSeat $ mkPlayer "Player 3" 100
   sitIn player1
   sitIn player2
+  sitIn player3
   postAnte player1
   postAnte player2
+  postAnte player3
   designateDealer player1
   dealCards
   endRound
 
-  check player1
-  bet player2 10
-  call player1
+  bet player1 50
+  raise player2 60
+  fold player1
+  call player3
   endRound
 
 --   -- Setup round
@@ -54,19 +48,19 @@ exampleGame = do
 --   designateDealer player1
 --   dealCards
 --   endRound
--- 
+--
 --   -- pre draw round
 --   bet player1 10
---   call player2 
+--   call player2
 --   endRound
--- 
+--
 --   -- draw round 1
 --   draw player1 $ DrawChoices Discard Discard Discard Discard Keep
 --   draw player2 $ DrawChoices Discard Discard Discard Discard Keep
 --   bet player1 10
 --   call player2
 --   endRound
--- 
+--
 --   -- draw round 2
 --   draw player1 $ DrawChoices Discard Discard Discard Discard Keep
 --   draw player2 $ DrawChoices Discard Discard Discard Discard Keep
@@ -82,7 +76,10 @@ runGame = do
   case gameResult of
     Left err      -> error $ show err
     Right (_,GameCtx{..}) -> do
+      pPrint $ "ante: " <> show (unChips gameCtx'ante) <> "\n"
       pPrint $ "bet: " <> show (unChips gameCtx'bet) <> "\n"
-      pPrint $ "pot: " <> show (unChips gameCtx'pot) <> "\n"
+      pPrint $ "pot (ante per player + bets): " <> show (unChips gameCtx'pot) <> "\n"
       putStrLn "Players:"
       pPrint gameCtx'players
+      putStrLn "Winners:"
+      pPrint gameCtx'winners

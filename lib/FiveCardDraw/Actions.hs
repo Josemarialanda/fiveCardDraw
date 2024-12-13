@@ -21,10 +21,8 @@ import qualified FiveCardDraw.Validation  as Validation
 
 import           Control.Lens             ((%~), (&), (+~), (-~), (.~), (?~))
 import           Control.Monad.Except     (MonadError (..))
-import           Control.Monad.State      (MonadState (..), gets, modify)
+import           Control.Monad.State      (MonadState (..), modify)
 import           Data.Bifunctor           (first)
-import           Data.List                (mapAccumR)
-import           Data.Tuple               (swap)
 import           FiveCardDraw.Hands       (evaluatePlayerHands)
 import           FiveCardDraw.Types       (BettingAction (..), Chips (Chips),
                                            Deck, DrawChoices, GameCtx (..),
@@ -42,12 +40,13 @@ import           FiveCardDraw.Types       (BettingAction (..), Chips (Chips),
                                            player'handL, player'seatL,
                                            player'statusL)
 import           FiveCardDraw.Utils.Utils (dealHand, dealToPlayers, drawNCards,
-                                           isWinner, nextRound,
+                                           isWinner, lookupPlayerBySeat,
+                                           nextRound, playerIsInHand,
                                            playerNearestToLeftOfDealer,
                                            rankPlayerHand, replaceCardsWithDraw,
                                            splitChipsAmongWinners,
                                            takeFreeSeatUnsafe, winnerSeats,
-                                           winnersLength)
+                                           winnersLength, isAllIn, allButOnePlayerFolded)
 
 type Bundle m = (MonadState GameCtx m, MonadError GameError m)
 
@@ -236,7 +235,7 @@ fold' seat ctx = ctx & gameCtx'playersL %~ Map.adjust foldPlayer seat
 postAnte' :: Seat -> GameCtx -> GameCtx
 postAnte' seat ctx@GameCtx{..} = ctx
   & gameCtx'playersL %~ Map.adjust postAntePlayer seat
-  & gameCtx'potL .~ gameCtx'ante
+  & gameCtx'potL +~ gameCtx'ante
   where
     postAntePlayer :: Player -> Player
     postAntePlayer player = player
@@ -248,49 +247,55 @@ postAnte' seat ctx@GameCtx{..} = ctx
 call' :: Seat -> GameCtx -> GameCtx
 call' seat ctx@GameCtx{..} = ctx
   & gameCtx'playersL %~ Map.adjust callPlayer seat
-  & gameCtx'potL +~ gameCtx'bet
+  & gameCtx'potL +~ betIncrement
   where
+    bet' :: Chips
+    bet' = min gameCtx'bet (maybe 0 player'chips (lookupPlayerBySeat seat ctx))
+
+    betIncrement :: Chips
+    betIncrement = min gameCtx'bet (maybe 0 player'chips (lookupPlayerBySeat seat ctx)) - maybe 0 player'bet (lookupPlayerBySeat seat ctx)
+
     callPlayer :: Player -> Player
-    callPlayer player@Player{..} = player
-      & player'chipsL -~ gameCtx'bet
-      & player'betL .~ gameCtx'bet
-      & player'committedL +~ gameCtx'bet
-      & player'statusL .~ InHand (isAllIn player'chips gameCtx'bet (CanAct $ pure $ MadeBet HasCalled))
+    callPlayer player = player
+      & player'chipsL -~ betIncrement
+      & player'betL .~ bet'
+      & player'committedL +~ betIncrement
+      & player'statusL .~ InHand (isAllIn (player'chips player) gameCtx'bet (CanAct $ pure $ MadeBet HasCalled))
 
 raise' :: Seat -> Chips -> GameCtx -> GameCtx
 raise' seat bet ctx@GameCtx{..} = ctx
   & gameCtx'playersL %~ Map.adjust raisePlayer seat
-  & gameCtx'betL .~ bet
-  & gameCtx'potL +~ bet
+  & gameCtx'betL .~ max bet' gameCtx'bet
+  & gameCtx'potL +~ betIncrement
   where
+    bet' :: Chips
+    bet' = min bet (maybe 0 player'chips (lookupPlayerBySeat seat ctx))
+
+    betIncrement :: Chips
+    betIncrement = bet' - maybe 0 player'bet (lookupPlayerBySeat seat ctx)
+
     raisePlayer :: Player -> Player
-    raisePlayer player@Player{..} = player
-      & player'chipsL -~ bet
-      & player'betL .~ bet
-      & player'committedL +~ bet
-      & player'statusL .~ InHand (isAllIn player'chips bet (CanAct $ pure $ MadeBet $ HasRaised bet))
+    raisePlayer player = player
+      & player'chipsL -~ betIncrement
+      & player'betL .~ bet'
+      & player'committedL +~ betIncrement
+      & player'statusL .~ InHand (isAllIn (player'chips player) bet (CanAct $ pure $ MadeBet $ HasRaised bet'))
 
 bet' :: Seat -> Chips -> GameCtx -> GameCtx
 bet' seat bet ctx@GameCtx{..} = ctx
   & gameCtx'playersL %~ Map.adjust betPlayer seat
-  & gameCtx'betL .~ bet
-  & gameCtx'potL +~ bet
+  & gameCtx'betL .~ bet'
+  & gameCtx'potL +~ bet'
   where
+    bet' :: Chips
+    bet' = min bet $ maybe 0 player'chips (lookupPlayerBySeat seat ctx)
+
     betPlayer :: Player -> Player
-    betPlayer player@Player{..} = player
-      & player'chipsL -~ bet
-      & player'betL .~ bet
-      & player'committedL +~ bet
-      & player'statusL .~ InHand (isAllIn player'chips bet (CanAct $ pure $ MadeBet $ HasBet bet))
-
-isAllIn :: Chips -> Chips -> InHandStatus -> InHandStatus
-isAllIn playerChips bet status
-  | playerChips == bet = AllIn
-  | otherwise = status
-
-allButOnePlayerFolded :: GameCtx -> Bool
-allButOnePlayerFolded GameCtx{..} = 
-  length (Map.filter ((== InHand Folded) . player'status) gameCtx'players) == 1
+    betPlayer player = player
+      & player'chipsL -~ bet'
+      & player'betL .~ bet'
+      & player'committedL +~ bet'
+      & player'statusL .~ InHand (isAllIn (player'chips player) bet (CanAct $ pure $ MadeBet $ HasBet bet'))
 
 check' :: Seat -> GameCtx -> GameCtx
 check' seat ctx = ctx & gameCtx'playersL %~ Map.adjust checkPlayer seat
@@ -309,7 +314,7 @@ draw' seat drawSelection ctx@GameCtx{..} = ctx
       player'handL .~ newHand
 
     playerHand :: Maybe Hand
-    playerHand = Map.lookup seat gameCtx'players >>= player'hand
+    playerHand = lookupPlayerBySeat seat ctx >>= player'hand
 
     mkNewHand :: Hand -> (Maybe Hand, Deck)
     mkNewHand = first Just . replaceCardsWithDraw gameCtx'deck drawSelection

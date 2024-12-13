@@ -1,13 +1,15 @@
 module FiveCardDraw.Types where
 
-import           Control.Lens         (DefName (..), lensField, lensRules,
-                                       makeLensesWith, (&), (.~))
+import           Control.Lens        (DefName (..), lensField, lensRules,
+                                      makeLensesWith, (&), (.~))
+import           Data.Function       (on)
+import           Data.Map            (Map)
+import           Data.Monoid         (Last (..))
+import           Language.Haskell.TH (mkName, nameBase)
 import           Control.Monad.Except (MonadError)
 import           Control.Monad.State  (MonadState)
-import           Data.Function        (on)
-import           Data.Map             (Map)
-import           Data.Monoid          (Last (..))
-import           Language.Haskell.TH  (mkName, nameBase)
+
+type Bundle m = (MonadState FiveCardDraw.Types.GameCtx m, MonadError GameError m)
 
 data Rank
   = Two

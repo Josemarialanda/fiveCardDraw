@@ -97,7 +97,7 @@ game = \case
   MuckHand        player next         -> Actions.muckHand player next
   SitOut          player next         -> Actions.sitOut player next
   SitIn           player next         -> Actions.sitIn player next
-  EndRound      next                -> Actions.endRound next
+  EndRound        next                -> Actions.endRound next
 
 interpret :: Game a -> Interpreter a
 interpret = iterM game
